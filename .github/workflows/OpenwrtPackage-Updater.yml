@@ -1,0 +1,128 @@
+#
+# This is free software, lisence use MIT.
+# https://github.com/roacn/openwrt-packages
+# https://github.com/xiangfeidexiaohuo/openwrt-packages
+# https://github.com/759071793/openwrt_packages
+# https://github.com/kiddin9/openwrt-packages
+# # 
+name: Update OpenwrtPackage
+on:
+  push:
+    paths:
+      - '.github/workflows/OpenwrtPackage-Updater.yml'
+      - '.github/Pull_third_party_package.sh'
+
+  workflow_dispatch:
+
+  repository_dispatch:
+
+jobs:
+  merge:
+    if: github.event.repository.owner.id == github.event.sender.id || ! github.event.sender.id
+    runs-on: Ubuntu-20.04
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set git identity
+      run : |
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "github-actions[bot]"
+        sudo timedatectl set-timezone "Asia/Shanghai"
+        
+    - name: Syn upstream
+      run: |
+        shopt -s extglob
+        git rm -r --cache * >/dev/null 2>&1 &
+        rm -rf `find ./* -maxdepth 0 -type d ! -name ".diy"` >/dev/null 2>&1
+        function git_clone() (
+          git clone --depth 1 $1 $2 || true
+        )
+        function git_branch_clone() (
+          git clone --depth=1 -b $1 $2 || true
+        )
+        function git_sparse_clone() (
+          branch="$1" rurl="$2" localdir="$3" && shift 3
+          git clone -b $branch --depth 1 --filter=blob:none --sparse $rurl $localdir
+          cd $localdir
+          git sparse-checkout init --cone
+          git sparse-checkout set $@
+          mv -n $@ ../
+          cd ..
+          rm -rf $localdir
+          )
+        function mvdir() {
+        mv -n `find $1/* -maxdepth 0 -type d` ./
+        rm -rf $1
+        }
+        
+        source ./.github/Pull_third_party_package.sh
+        
+        for ipk in $(ls applications); do
+        	if [[ $(ls -l applications/$ipk/po | wc -l) -gt 3 ]]; then
+        		rm -rf applications/$ipk
+        	fi
+        done
+        
+
+        
+    - name: Apply patches
+      continue-on-error: true
+      run: |
+        find ".diy/patches" -type f -name '*.patch' -print0 | sort -z | xargs -I % -t -0 -n 1 sh -c "cat '%'  | patch -d './' -p1 -E --forward --no-backup-if-mismatch"
+        
+    - name: Modify
+      continue-on-error: true
+      run: |
+        bash .diy/create_acl_for_luci.sh -a >/dev/null 2>&1 || true
+        bash .diy/convert_translation.sh -a >/dev/null 2>&1 || true
+        # 清理石像鬼插件
+        rm -rf *gargoyle*
+        # 清理重复或非必要文件
+        rm -Rf */.git */.svn qt5 openwrt-{chinadns*,simple-obfs,v2ray-plugin,fullconenat,dnsforwarder} cups* subweb \
+        rm -rf .svn
+        rm -rf ./*/.git
+        rm -rf ./*/.svn 
+        rm -rf ./*/.gitignore 
+        rm -rf ./*/LICENSE.packages
+        rm -f .gitattributes .gitignore
+
+        rm -f LICENSE
+        
+        
+        
+        rm -f subconverter/patches/010-missing-header.patch
+        sed -i 's?../../luci.mk?$(TOPDIR)/feeds/luci/luci.mk?g' */Makefile
+        sed -i 's?../../lang?$(TOPDIR)/feeds/packages/lang?g' */Makefile
+        
+        sed -i 's/ca-certificates/ca-bundle/g' */Makefile
+        #sed -i 's/+libcap /+libcap +libcap-bin /' luci-app-openclash/Makefile
+        sed -i 's/@GHCODELOAD/https:\/\/codeload.github.com/' */Makefile
+        find */luasrc/view/ -maxdepth 2 -name "*.htm" | xargs -i sed -i 's?"http://" + window.location.hostname?window.location.protocol + "//" + window.location.hostname?g' {}
+        find ./*/ -maxdepth 1 -name "Makefile" ! -path "*tinyfecvpn*" ! -path "*gowebdav*" | xargs -i sed -i "s/PKG_HASH:=.*/PKG_HASH:=skip/g" {}
+        sed -i 's/SUBDIRS=/M=/g' */Makefile
+        # sed -i 's/\(add ucitrack \(.*\)\)/\1\n\tservice \2 enable/g' luci-app*/root/etc/uci-defaults/*
+
+    - name: Apply
+      continue-on-error: true
+      run: |
+        if git status --porcelain | grep .; then      
+          Emoji=("🐹" "🐮" "🐯" "🐰" "🐲" "🐍" "🐴" "🐐" "🐵" "🐓" "🐶" "🐷" "♒" "♓" "♈" "♉️" "♊" "♋" "♌" "♍️" "♎" "♏" "♐" "♑")
+          git add .
+          git commit -m "${Emoji[$[$RANDOM % ${#Emoji[@]}]]} Sync $(date +%Y-%m-%d" "%H:%M)"
+          git push -f
+        else
+          echo "nothing to commit"
+          exit 0
+        fi || exit 0
+        
+    - name: Delete workflow runs
+      uses: Mattraks/delete-workflow-runs@main
+      continue-on-error: true
+      with:
+        retain_days: 1
+        keep_minimum_runs: 3
+        
