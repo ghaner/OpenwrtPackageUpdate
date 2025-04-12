@@ -52,10 +52,10 @@ TIME() {
 #============================================================================================
 echo
 TIME y ".github\Pull_third_party_package.sh开始添加 third-party package:"
-echo
-TIME y "添加 adguardhome"
-svn co https://github.com/kenzok8/openwrt-packages/tree/master/adguardhome
-svn co https://github.com/kenzok8/openwrt-packages/trunk/luci-app-adguardhome
+#echo
+#TIME y "添加 adguardhome"
+#svn co https://github.com/kenzok8/openwrt-packages/tree/master/adguardhome
+#svn co https://github.com/kenzok8/openwrt-packages/trunk/luci-app-adguardhome
 echo
 TIME y "添加 filebrowser"
 svn export https://github.com/ghaner/OpenWrt-Packages/trunk/filebrowser
